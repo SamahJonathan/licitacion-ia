@@ -1,0 +1,26 @@
+{
+  "name": "licitaciones-ia-scraper",
+  "version": "1.0.0",
+  "description": "Scraper de licitaciones de Mercado Publico con IA.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "puppeteer",
+    "supabase",
+    "gemini",
+    "express"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google/generative-ai": "^0.14.1",
+    "@supabase/supabase-js": "^2.43.5",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "puppeteer": "^22.12.1"
+  }
+}

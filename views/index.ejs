@@ -1,0 +1,288 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analizador de Licitaciones IA</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container {
+            margin-top: 2rem;
+        }
+        .card-header {
+            background-color: #0d6efd;
+            color: white;
+        }
+        .table-responsive {
+            max-height: 50vh;
+            overflow-y: auto;
+        }
+        #chat-body {
+            height: 60vh;
+            overflow-y: auto;
+            padding: 1rem;
+            background-color: #e9ecef;
+        }
+        .chat-message {
+            padding: 0.5rem 1rem;
+            border-radius: 1rem;
+            margin-bottom: 0.5rem;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #0d6efd;
+            color: white;
+            margin-left: auto;
+        }
+        .ia-message {
+            background-color: #ffffff;
+            border: 1px solid #dee2e6;
+        }
+        .typing-indicator {
+            display: none;
+            font-style: italic;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h1 class="h4 mb-0">Analizador de Licitaciones IA</h1>
+            </div>
+            <div class="card-body">
+                <form id="scrape-form">
+                    <div class="input-group mb-3">
+                        <input type="url" id="url-input" class="form-control form-control-lg" placeholder="Pegue la URL de la licitación de Mercado Público aquí" required>
+                        <button class="btn btn-primary" type="submit" id="scrape-button">
+                            <span id="button-text">Analizar Licitación</span>
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display: none;" id="button-spinner"></span>
+                        </button>
+                    </div>
+                </form>
+                <div id="alert-container"></div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+            <div class="card-header">
+                <h2 class="h5 mb-0">Historial de Licitaciones</h2>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Número</th>
+                                <th>Nombre</th>
+                                <th>Estado</th>
+                                <th>Fecha Cierre</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <% if (typeof licitaciones !== 'undefined' && licitaciones.length > 0) { %>
+                                <% licitaciones.forEach(function(licitacion) { %>
+                                    <tr>
+                                        <td><%= licitacion.numero %></td>
+                                        <td><%= licitacion.nombre %></td>
+                                        <td><span class="badge bg-secondary"><%= licitacion.estado %></span></td>
+                                        <td><%= new Date(licitacion.fecha_cierre).toLocaleDateString() %></td>
+                                        <td>
+                                            <button class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal" 
+                                                    data-id="<%= licitacion.id %>" 
+                                                    data-nombre="<%= licitacion.nombre %>"
+                                                    data-numero="<%= licitacion.numero %>">
+                                                💬 Chat IA
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <% }); %>
+                            <% } else { %>
+                                <tr>
+                                    <td colspan="5" class="text-center">No hay licitaciones guardadas.</td>
+                                </tr>
+                            <% } %>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Chat -->
+    <div class="modal fade" id="chatModal" tabindex="-1" aria-labelledby="chatModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="chatModalLabel">Chat IA</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div id="chat-body">
+                        <!-- Mensajes del chat se insertarán aquí -->
+                    </div>
+                    <div class="p-3 border-top">
+                         <form id="chat-form">
+                            <div class="input-group">
+                                <input type="text" id="chat-input" class="form-control" placeholder="Haz una pregunta sobre la licitación..." required>
+                                <button class="btn btn-primary" type="submit">Enviar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const scrapeForm = document.getElementById('scrape-form');
+            const urlInput = document.getElementById('url-input');
+            const scrapeButton = document.getElementById('scrape-button');
+            const buttonText = document.getElementById('button-text');
+            const buttonSpinner = document.getElementById('button-spinner');
+            const alertContainer = document.getElementById('alert-container');
+
+            const chatModal = document.getElementById('chatModal');
+            const chatForm = document.getElementById('chat-form');
+            const chatInput = document.getElementById('chat-input');
+            const chatBody = document.getElementById('chat-body');
+            const chatModalLabel = document.getElementById('chatModalLabel');
+
+            let currentLicitacionId = null;
+            let currentLicitacionNombre = null;
+
+            // Manejo del formulario de scraping
+            scrapeForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const url = urlInput.value;
+                
+                setLoading(true);
+                showAlert('info', 'Analizando licitación... Esto puede tardar unos momentos.');
+
+                try {
+                    const response = await fetch('/scrape', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url })
+                    });
+
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(result.details || 'Error en el servidor');
+                    }
+
+                    showAlert('success', '¡Licitación analizada y guardada! La página se recargará.');
+                    setTimeout(() => location.reload(), 2000);
+
+                } catch (error) {
+                    showAlert('danger', `Error: ${error.message}`);
+                } finally {
+                    setLoading(false);
+                }
+            });
+
+            // Preparar el modal de chat cuando se abre
+            chatModal.addEventListener('show.bs.modal', (event) => {
+                const button = event.relatedTarget;
+                currentLicitacionId = button.getAttribute('data-id');
+                currentLicitacionNombre = button.getAttribute('data-nombre');
+                const licitacionNumero = button.getAttribute('data-numero');
+
+                chatModalLabel.textContent = `Chat sobre: ${licitacionNumero}`;
+                chatBody.innerHTML = ''; // Limpiar chat anterior
+                addMessageToChat('ia', `Hola, soy tu asistente de IA. ¿Qué te gustaría saber sobre la licitación "${currentLicitacionNombre}"?`);
+            });
+
+            // Manejo del formulario de chat
+            chatForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const userPrompt = chatInput.value.trim();
+                if (!userPrompt) return;
+
+                addMessageToChat('user', userPrompt);
+                chatInput.value = '';
+                showTypingIndicator(true);
+
+                try {
+                    // Contextualizamos la pregunta para la IA
+                    const fullPrompt = `Considerando la licitación "${currentLicitacionNombre}", responde a la siguiente pregunta de forma concisa y clara: ${userPrompt}`;
+
+                    const response = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: fullPrompt })
+                    });
+
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.error || 'No se pudo obtener respuesta de la IA.');
+                    }
+                    
+                    addMessageToChat('ia', result.response);
+
+                } catch (error) {
+                    addMessageToChat('ia', `Lo siento, hubo un error: ${error.message}`);
+                } finally {
+                    showTypingIndicator(false);
+                }
+            });
+
+            function setLoading(isLoading) {
+                if (isLoading) {
+                    buttonText.style.display = 'none';
+                    buttonSpinner.style.display = 'inline-block';
+                    scrapeButton.disabled = true;
+                } else {
+                    buttonText.style.display = 'inline-block';
+                    buttonSpinner.style.display = 'none';
+                    scrapeButton.disabled = false;
+                }
+            }
+
+            function showAlert(type, message) {
+                alertContainer.innerHTML = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>`;
+            }
+
+            function addMessageToChat(sender, text) {
+                const messageElement = document.createElement('div');
+                messageElement.classList.add('chat-message', sender === 'user' ? 'user-message' : 'ia-message');
+                messageElement.textContent = text;
+                chatBody.appendChild(messageElement);
+                chatBody.scrollTop = chatBody.scrollHeight; // Auto-scroll
+            }
+
+            function showTypingIndicator(isTyping) {
+                let indicator = chatBody.querySelector('.typing-indicator');
+                if (isTyping) {
+                    if (!indicator) {
+                        indicator = document.createElement('div');
+                        indicator.classList.add('typing-indicator', 'ia-message');
+                        indicator.textContent = 'IA está escribiendo...';
+                        chatBody.appendChild(indicator);
+                        chatBody.scrollTop = chatBody.scrollHeight;
+                    }
+                    indicator.style.display = 'block';
+                } else {
+                    if (indicator) {
+                        indicator.remove();
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
