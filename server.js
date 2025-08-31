@@ -137,6 +137,13 @@ async function scrapeLicitacion(url) {
         console.log('Lanzando Puppeteer...');
         browser = await puppeteer.launch({
             headless: true,
+            // --- INICIO: AJUSTE PARA RENDER.COM ---
+            // executablePath le dice a Puppeteer dónde encontrar el binario de Chromium
+            // que se instaló con el Build Command. puppeteer.executablePath() lo encuentra automáticamente.
+            executablePath: process.env.NODE_ENV === 'production'
+                ? puppeteer.executablePath()
+                : undefined,
+            // --- FIN: AJUSTE PARA RENDER.COM ---
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
