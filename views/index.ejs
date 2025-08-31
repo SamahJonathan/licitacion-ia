@@ -215,13 +215,13 @@
                 showTypingIndicator(true);
 
                 try {
-                    // Contextualizamos la pregunta para la IA
-                    const fullPrompt = `Considerando la licitación "${currentLicitacionNombre}", responde a la siguiente pregunta de forma concisa y clara: ${userPrompt}`;
-
                     const response = await fetch('/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt: fullPrompt })
+                        body: JSON.stringify({ 
+                            prompt: userPrompt, 
+                            licitacionId: currentLicitacionId 
+                        })
                     });
 
                     const result = await response.json();

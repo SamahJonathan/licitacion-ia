@@ -34,11 +34,23 @@ app.set('view engine', 'ejs');
  * Ruta principal que renderiza la página de inicio.
  * Asume que existe un archivo `views/index.ejs`.
  */
-app.get('/', (req, res) => {
-    // Para que el servidor funcione, crea una carpeta `views` y dentro un archivo `index.ejs`.
-    // Ejemplo de `views/index.ejs`:
-    // <!DOCTYPE html><html><body><h1>Scraper de Licitaciones</h1><form action="/scrape" method="POST"><input type="text" name="url" placeholder="URL de la licitación" size="100"><button type="submit">Scrapear</button></form></body></html>
-    res.render('index');
+app.get('/', async (req, res) => {
+    try {
+        console.log("Obteniendo historial de licitaciones desde Supabase...");
+        const { data: licitaciones, error } = await supabase
+            .from('licitaciones')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        console.log(`Se encontraron ${licitaciones.length} licitaciones.`);
+        res.render('index', { licitaciones: licitaciones || [] });
+
+    } catch (error) {
+        console.error("Error al obtener licitaciones:", error);
+        res.render('index', { licitaciones: [], error: 'No se pudo cargar el historial.' });
+    }
 });
 
 /**
@@ -107,19 +119,66 @@ app.post('/scrape', async (req, res) => {
  */
 app.post('/chat', async (req, res) => {
     try {
-        const { prompt } = req.body;
-        if (!prompt) {
-            return res.status(400).json({ error: 'El prompt es requerido.' });
+        const { prompt, licitacionId } = req.body;
+        if (!prompt || !licitacionId) {
+            return res.status(400).json({ error: 'El prompt y el ID de la licitación son requeridos.' });
         }
 
-        const result = await geminiModel.generateContent(prompt);
+        // 1. Obtener datos de la licitación
+        const { data: licitacion, error: licitacionError } = await supabase
+            .from('licitaciones')
+            .select('*')
+            .eq('id', licitacionId)
+            .single();
+
+        if (licitacionError) throw licitacionError;
+        if (!licitacion) return res.status(404).json({ error: 'Licitación no encontrada.' });
+
+        // 2. Obtener archivos asociados
+        const { data: archivos, error: archivosError } = await supabase
+            .from('archivos')
+            .select('nombre, url_almacenamiento')
+            .eq('licitacion_id', licitacionId);
+
+        if (archivosError) throw archivosError;
+
+        // 3. Construir un prompt con contexto enriquecido para la IA
+        let context = `Contexto de la Licitación:
+`;
+        context += ` - Nombre: ${licitacion.nombre}
+`;
+        context += ` - Número: ${licitacion.numero}
+`;
+        context += ` - Estado: ${licitacion.estado}
+`;
+        context += ` - Monto: ${licitacion.monto || 'No especificado'}
+`;
+        context += ` - Fecha de Cierre: ${new Date(licitacion.fecha_cierre).toLocaleString()}
+`;
+        context += ` - Entidad: ${licitacion.entidad}
+`;
+
+        if (archivos && archivos.length > 0) {
+            context += ` - Archivos adjuntos:
+`;
+            archivos.forEach(archivo => {
+                context += `   - ${archivo.nombre} (URL: ${archivo.url_almacenamiento})
+`;
+            });
+        }
+
+        const fullPrompt = `${context}\nPregunta del usuario: ${prompt}\n\nResponde a la pregunta del usuario basándote únicamente en el contexto proporcionado. Si la pregunta es sobre un archivo, menciona su nombre y URL.`;
+
+        // 4. Enviar a Gemini
+        const result = await geminiModel.generateContent(fullPrompt);
         const response = await result.response;
         const text = response.text();
 
         res.json({ response: text });
+
     } catch (error) {
         console.error('Error al contactar a Gemini:', error);
-        res.status(500).json({ error: 'Error al procesar la solicitud de chat.' });
+        res.status(500).json({ error: 'Error al procesar la solicitud de chat.', details: error.message });
     }
 });
 
@@ -137,22 +196,15 @@ async function scrapeLicitacion(url) {
         console.log('Lanzando Puppeteer...');
         browser = await puppeteer.launch({
             headless: true,
-            // --- INICIO: AJUSTE PARA RENDER.COM ---
-            // executablePath le dice a Puppeteer dónde encontrar el binario de Chromium
-            // que se instaló con el Build Command. puppeteer.executablePath() lo encuentra automáticamente.
-            executablePath: process.env.NODE_ENV === 'production'
-                ? puppeteer.executablePath()
-                : undefined,
-            // --- FIN: AJUSTE PARA RENDER.COM ---
+            // executablePath le dice a Puppeteer dónde encontrar el Chromium
+            // que instalamos en el Build Command de Render.
+            executablePath: puppeteer.executablePath(),
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-gpu'
+                '--disable-gpu',
+                '--single-process'
             ]
         });
         const page = await browser.newPage();
