@@ -96,11 +96,17 @@
                                         <td><span class="badge bg-secondary"><%= licitacion.estado %></span></td>
                                         <td><%= new Date(licitacion.fecha_cierre).toLocaleDateString() %></td>
                                         <td>
-                                            <button class="btn btn-info btn-sm" data-bs-toggle="modal" data-bs-target="#chatModal" 
+                                            <button class="btn btn-info btn-sm me-2" data-bs-toggle="modal" data-bs-target="#chatModal" 
                                                     data-id="<%= licitacion.id %>" 
                                                     data-nombre="<%= licitacion.nombre %>"
                                                     data-numero="<%= licitacion.numero %>">
                                                 💬 Chat IA
+                                            </button>
+                                            <button class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal"
+                                                    data-id="<%= licitacion.id %>"
+                                                    data-nombre="<%= licitacion.nombre %>"
+                                                    data-numero="<%= licitacion.numero %>">
+                                                🗑️ Eliminar
                                             </button>
                                         </td>
                                     </tr>
@@ -137,6 +143,27 @@
                             </div>
                         </form>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de confirmación para eliminar -->
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteModalLabel">Confirmar eliminación</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>¿Está seguro que desea eliminar la licitación?</p>
+                    <p><strong id="deleteModalInfo"></strong></p>
+                    <p class="text-muted">Esta acción no se puede deshacer.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Eliminar</button>
                 </div>
             </div>
         </div>
@@ -282,6 +309,46 @@
                     }
                 }
             }
+
+            // Manejo del modal de eliminación
+            const deleteModal = document.getElementById('deleteModal');
+            const deleteModalInfo = document.getElementById('deleteModalInfo');
+            const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+            let currentDeleteId = null;
+
+            deleteModal.addEventListener('show.bs.modal', (event) => {
+                const button = event.relatedTarget;
+                currentDeleteId = button.getAttribute('data-id');
+                const nombre = button.getAttribute('data-nombre');
+                const numero = button.getAttribute('data-numero');
+                
+                deleteModalInfo.textContent = `${numero} - ${nombre}`;
+            });
+
+            confirmDeleteBtn.addEventListener('click', async () => {
+                if (!currentDeleteId) return;
+                
+                try {
+                    const response = await fetch(`/licitacion/${currentDeleteId}`, {
+                        method: 'DELETE'
+                    });
+
+                    const result = await response.json();
+                    
+                    if (response.ok) {
+                        showAlert('success', 'Licitación eliminada exitosamente.');
+                        setTimeout(() => window.location.reload(), 1000);
+                    } else {
+                        throw new Error(result.error || 'Error al eliminar');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    showAlert('danger', `Error: ${error.message}`);
+                }
+                
+                // Cerrar modal
+                bootstrap.Modal.getInstance(deleteModal).hide();
+            });
         });
     </script>
 </body>

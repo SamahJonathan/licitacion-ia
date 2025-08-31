@@ -191,6 +191,40 @@ app.post('/chat', async (req, res) => {
     }
 });
 
+/**
+ * Endpoint para eliminar una licitación y sus archivos asociados
+ */
+app.delete('/licitacion/:id', async (req, res) => {
+    try {
+        const licitacionId = req.params.id;
+        console.log(`Eliminando licitación: ${licitacionId}`);
+
+        // 1. Eliminar archivos asociados de la base de datos
+        const { error: archivosError } = await supabase
+            .from('archivos')
+            .delete()
+            .eq('licitacion_id', licitacionId);
+
+        if (archivosError) {
+            console.log('Error eliminando archivos (no crítico):', archivosError.message);
+        }
+
+        // 2. Eliminar la licitación
+        const { error: licitacionError } = await supabase
+            .from('licitaciones')
+            .delete()
+            .eq('id', licitacionId);
+
+        if (licitacionError) throw licitacionError;
+
+        console.log(`Licitación ${licitacionId} eliminada exitosamente`);
+        res.json({ message: 'Licitación eliminada exitosamente' });
+
+    } catch (error) {
+        console.error('Error eliminando licitación:', error);
+        res.status(500).json({ error: 'Error al eliminar la licitación', details: error.message });
+    }
+});
 
 // --- LÓGICA DE SCRAPING Y ARCHIVOS ---
 
