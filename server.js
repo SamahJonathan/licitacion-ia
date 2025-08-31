@@ -20,7 +20,7 @@ const GEMINI_API_KEY = 'AIzaSyD8FCoQ5w_9CxppzDQGeiixgkJm-uP_QNw';
 // Inicialización de clientes
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const geminiModel = genAI.getGenerativeModel({ model: "gemini-pro" });
+const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 // --- MIDDLEWARE ---
 app.use(express.json());
@@ -81,8 +81,7 @@ app.post('/scrape', async (req, res) => {
                 estado: licitacionData.estado,
                 monto: licitacionData.monto,
                 fecha_cierre: licitacionData.fechaCierre,
-                entidad: licitacionData.entidad,
-                url_origen: url
+                entidad: licitacionData.entidad
             }])
             .select()
             .single();
@@ -119,6 +118,7 @@ app.post('/scrape', async (req, res) => {
  */
 app.post('/chat', async (req, res) => {
     try {
+        console.log('Recibida solicitud de chat:', req.body);
         const { prompt, licitacionId } = req.body;
         if (!prompt || !licitacionId) {
             return res.status(400).json({ error: 'El prompt y el ID de la licitación son requeridos.' });
@@ -134,13 +134,20 @@ app.post('/chat', async (req, res) => {
         if (licitacionError) throw licitacionError;
         if (!licitacion) return res.status(404).json({ error: 'Licitación no encontrada.' });
 
-        // 2. Obtener archivos asociados
-        const { data: archivos, error: archivosError } = await supabase
-            .from('archivos')
-            .select('nombre, url_almacenamiento')
-            .eq('licitacion_id', licitacionId);
-
-        if (archivosError) throw archivosError;
+        // 2. Obtener archivos asociados (opcional)
+        let archivos = [];
+        try {
+            const { data: archivosData, error: archivosError } = await supabase
+                .from('archivos')
+                .select('nombre')
+                .eq('licitacion_id', licitacionId);
+            
+            if (!archivosError) {
+                archivos = archivosData || [];
+            }
+        } catch (error) {
+            console.log('No se pudieron obtener archivos:', error.message);
+        }
 
         // 3. Construir un prompt con contexto enriquecido para la IA
         let context = `Contexto de la Licitación:
@@ -162,7 +169,7 @@ app.post('/chat', async (req, res) => {
             context += ` - Archivos adjuntos:
 `;
             archivos.forEach(archivo => {
-                context += `   - ${archivo.nombre} (URL: ${archivo.url_almacenamiento})
+                context += `   - ${archivo.nombre}
 `;
             });
         }
@@ -170,9 +177,11 @@ app.post('/chat', async (req, res) => {
         const fullPrompt = `${context}\nPregunta del usuario: ${prompt}\n\nResponde a la pregunta del usuario basándote únicamente en el contexto proporcionado. Si la pregunta es sobre un archivo, menciona su nombre y URL.`;
 
         // 4. Enviar a Gemini
+        console.log('Enviando prompt a Gemini...');
         const result = await geminiModel.generateContent(fullPrompt);
         const response = await result.response;
         const text = response.text();
+        console.log('Respuesta de Gemini recibida');
 
         res.json({ response: text });
 
@@ -296,7 +305,7 @@ async function downloadAndUploadFile(fileUrl, fileName, licitacionId) {
         const { error: dbError } = await supabase.from('archivos').insert({
             licitacion_id: licitacionId,
             nombre: fileName,
-            url_almacenamiento: publicUrl,
+            url: publicUrl,
             path_almacenamiento: filePathInBucket
         });
 
